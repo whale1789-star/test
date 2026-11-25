@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>線上多科別測驗與即時排行榜系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif; }
+    .option-card:hover { border-color: #3b82f6; background-color: #eff6ff; }
+    .option-selected { border-color: #2563eb !important; background-color: #dbeafe !important; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <!-- 頂部導覽列 -->
+  <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-20">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-2">
+        <span class="text-xl font-bold tracking-wide">線上測驗系統</span>
+        <span id="headerSubjectBadge" class="hidden text-xs bg-indigo-500 px-2.5 py-1 rounded-full"></span>
+      </div>
+      <nav class="space-x-2">
+        <button onclick="switchTab('exam')" id="navExamBtn"
+          class="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-indigo-700 shadow-sm">
+          開始測驗
+        </button>
+        <button onclick="switchTab('leaderboard')" id="navBoardBtn"
+          class="px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-100 hover:bg-indigo-600">
+          考科排行榜
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-6">
+
+    <!-- 全域載入遮罩 -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center">
+      <div class="bg-white px-6 py-4 rounded-xl shadow-lg flex items-center space-x-3">
+        <div class="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <span id="loadingText" class="text-sm font-medium text-slate-700">資料載入中，請稍候...</span>
+      </div>
+    </div>
+
+    <!-- ==================== 區塊一：測驗流程 ==================== -->
+    <section id="examSection">
+
+      <!-- 步驟 1：選擇考科與填寫基本資料 -->
+      <div id="setupView" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-xl mx-auto">
+        <h2 class="text-xl font-bold text-slate-800 mb-1">測驗報到與選科</h2>
+        <p class="text-sm text-slate-500 mb-6">請輸入學號與姓名，並選擇要測驗的考科。按下開始後系統將立即計時。</p>
+
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">選擇考科</label>
+            <select id="subjectSelect"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+              <option value="">載入考科清單中...</option>
+            </select>
+            <p id="subjectMeta" class="text-xs text-indigo-600 mt-1.5 font-medium"></p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">學號</label>
+              <input type="text" id="studentIdInput" placeholder="例如：112001"
+                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">姓名</label>
+              <input type="text" id="studentNameInput" placeholder="例如：王小明"
+                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+
+          <button onclick="startExam()"
+            class="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg shadow-sm transition cursor-pointer">
+            開始作答
+          </button>
+        </div>
+      </div>
+
+      <!-- 步驟 2：進行作答 -->
+      <div id="quizView" class="hidden space-y-5">
+        <!-- 計時與進度資訊列 -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-4 sticky top-16 z-10">
+          <div>
+            <span class="text-xs text-slate-500 block">考生資訊</span>
+            <span id="quizStudentInfo" class="font-semibold text-sm text-slate-800"></span>
+          </div>
+          <div class="flex items-center space-x-6">
+            <div class="text-center">
+              <span class="text-xs text-slate-500 block">作答進度</span>
+              <span id="progressText" class="font-bold text-indigo-600 text-base">0 / 0</span>
+            </div>
+            <div class="text-center">
+              <span class="text-xs text-slate-500 block">剩餘時間</span>
+              <span id="timerText" class="font-mono font-bold text-lg text-emerald-600">00:00</span>
+            </div>
+            <button onclick="confirmSubmitExam()"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm transition cursor-pointer">
+              確認交卷
+            </button>
+          </div>
+        </div>
+
+        <!-- 題目列表容器 -->
+        <div id="questionsContainer" class="space-y-4"></div>
+
+        <div class="flex justify-end pt-2 pb-8">
+          <button onclick="confirmSubmitExam()"
+            class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 py-3 rounded-xl shadow-md transition cursor-pointer">
+            完成並送出試卷
+          </button>
+        </div>
+      </div>
+
+      <!-- 步驟 3：測驗成績與詳解 -->
+      <div id="resultView" class="hidden space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 text-center">
+          <span class="inline-block px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full mb-2">測驗完成</span>
+          <h2 id="resultSubjectTitle" class="text-xl font-bold text-slate-800"></h2>
+          <p id="resultStudentMeta" class="text-sm text-slate-500 mt-1"></p>
+
+          <div class="my-6 flex justify-center items-baseline space-x-2">
+            <span id="resultScore" class="text-5xl font-extrabold text-indigo-600">0</span>
+            <span class="text-lg text-slate-500 font-medium">分</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3 max-w-md mx-auto bg-slate-50 rounded-xl p-4 border border-slate-200/80 text-sm">
+            <div>
+              <span class="text-slate-400 text-xs block">答對題數</span>
+              <span id="resultCorrectCount" class="font-bold text-slate-800"></span>
+            </div>
+            <div>
+              <span class="text-slate-400 text-xs block">作答耗時</span>
+              <span id="resultDuration" class="font-bold text-slate-800"></span>
+            </div>
+            <div>
+              <span class="text-slate-400 text-xs block">交卷時間</span>
+              <span id="resultTimestamp" class="font-bold text-slate-800 text-xs"></span>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap justify-center gap-3">
+            <button onclick="viewSubjectLeaderboard()"
+              class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg shadow-sm transition cursor-pointer">
+              查看本科排行榜
+            </button>
+            <button onclick="resetToSetup()"
+              class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-sm font-semibold px-5 py-2.5 rounded-lg transition cursor-pointer">
+              返回選科首頁
+            </button>
+          </div>
+        </div>
+
+        <!-- 逐題對錯檢視 -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <h3 class="text-base font-bold text-slate-800 mb-4">作答明細與解析</h3>
+          <div id="resultDetailsContainer" class="space-y-4"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ==================== 區塊二：考科排行榜 ==================== -->
+    <section id="leaderboardSection" class="hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">考科成績排行榜</h2>
+            <p class="text-xs text-slate-500 mt-1">排序規則：分數高者優先，同分時依交卷時間先後（或作答耗時）排序</p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="boardSubjectSelect" onchange="loadLeaderboard()"
+              class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </select>
+            <select id="boardTieModeSelect" onchange="loadLeaderboard()"
+              class="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="submitted_at">同分比交卷時間（早者勝）</option>
+              <option value="duration">同分比作答耗時（短者勝）</option>
+            </select>
+            <button onclick="loadLeaderboard()"
+              class="bg-slate-800 hover:bg-slate-900 text-white text-sm px-3.5 py-2 rounded-lg transition cursor-pointer">
+              重新整理
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase bg-slate-50">
+                <th class="py-3 px-4 w-16 text-center">名次</th>
+                <th class="py-3 px-4">學號</th>
+                <th class="py-3 px-4">姓名</th>
+                <th class="py-3 px-4 text-right">分數</th>
+                <th class="py-3 px-4 text-right">作答耗時</th>
+                <th class="py-3 px-4 text-right">交卷時間戳記</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboardBody" class="divide-y divide-slate-100 text-sm">
+              <tr>
+                <td colspan="6" class="py-8 text-center text-slate-400">請選擇考科載入排行榜</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+   
+    const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwqV9D5bLKIQWzfOGshHKqQxR9KCxxhQzEEKaeNkRZaVsTPhnfbNXjV6ARvDtnDZc0/exec';
+
+    let subjectsList = [];
+    let currentQuiz = null;
+    let userAnswers = {};
+    let timerInterval = null;
+    let remainingSeconds = 0;
+    let examStartTimeMs = 0;
+    let isSubmitting = false;
+
+    // 初始化載入考科清單
+    window.addEventListener('DOMContentLoaded', async () => {
+      await fetchSubjects();
+    });
+
+    function showLoading(text = '資料處理中，請稍候...') {
+      document.getElementById('loadingText').textContent = text;
+      document.getElementById('loadingOverlay').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').classList.add('hidden');
+    }
+
+    // 切換頂部頁籤（測驗 / 排行榜）
+    function switchTab(tab) {
+      const examSec = document.getElementById('examSection');
+      const boardSec = document.getElementById('leaderboardSection');
+      const navExam = document.getElementById('navExamBtn');
+      const navBoard = document.getElementById('navBoardBtn');
+
+      if (tab === 'exam') {
+        examSec.classList.remove('hidden');
+        boardSec.classList.add('hidden');
+        navExam.className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-indigo-700 shadow-sm';
+        navBoard.className = 'px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-100 hover:bg-indigo-600';
+      } else {
+        examSec.classList.add('hidden');
+        boardSec.classList.remove('hidden');
+        navBoard.className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-indigo-700 shadow-sm';
+        navExam.className = 'px-3 py-1.5 rounded-lg text-sm font-medium text-indigo-100 hover:bg-indigo-600';
+        loadLeaderboard();
+      }
+    }
+
+    // 1. 取得開放考科清單
+    async function fetchSubjects() {
+      showLoading('載入考科清單...');
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=getSubjects`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message);
+
+        subjectsList = json.data || [];
+        const subSelect = document.getElementById('subjectSelect');
+        const boardSelect = document.getElementById('boardSubjectSelect');
+
+        if (subjectsList.length === 0) {
+          subSelect.innerHTML = '<option value="">目前無開放的考科</option>';
+          boardSelect.innerHTML = '<option value="">無考科</option>';
+          return;
+        }
+
+        const optionsHtml = subjectsList.map(s =>
+          `<option value="${s.subjectCode}">${s.subjectName} (${s.subjectCode})</option>`
+        ).join('');
+
+        subSelect.innerHTML = optionsHtml;
+        boardSelect.innerHTML = optionsHtml;
+
+        subSelect.addEventListener('change', updateSubjectMeta);
+        updateSubjectMeta();
+      } catch (err) {
+        alert('載入考科失敗：' + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function updateSubjectMeta() {
+      const code = document.getElementById('subjectSelect').value;
+      const found = subjectsList.find(s => s.subjectCode === code);
+      const metaEl = document.getElementById('subjectMeta');
+      if (found) {
+        const mins = Math.round(found.timeLimitSec / 60);
+        metaEl.textContent = `抽題數：${found.questionCount} 題 ｜ 測驗限時：${mins} 分鐘 (${found.timeLimitSec} 秒)`;
+      } else {
+        metaEl.textContent = '';
+      }
+    }
+
+    // 2. 開始測驗（抽題並啟動倒數計時）
+    async function startExam() {
+      const subjectCode = document.getElementById('subjectSelect').value;
+      const studentId = document.getElementById('studentIdInput').value.trim();
+      const studentName = document.getElementById('studentNameInput').value.trim();
+
+      if (!subjectCode) return alert('請選擇考科');
+      if (!studentId || !studentName) return alert('請輸入學號與姓名');
+
+      showLoading('正在抽取試題...');
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=getQuestions&subject=${encodeURIComponent(subjectCode)}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message);
+
+        currentQuiz = {
+          ...json.data,
+          studentId,
+          studentName
+        };
+        userAnswers = {};
+        isSubmitting = false;
+
+        renderQuizView();
+        startTimer(currentQuiz.timeLimitSec);
+      } catch (err) {
+        alert('無法開始測驗：' + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // 渲染題目畫面
+    function renderQuizView() {
+      document.getElementById('setupView').classList.add('hidden');
+      document.getElementById('resultView').classList.add('hidden');
+      document.getElementById('quizView').classList.remove('hidden');
+
+      const badge = document.getElementById('headerSubjectBadge');
+      badge.textContent = `${currentQuiz.subjectName} (${currentQuiz.subjectCode})`;
+      badge.classList.remove('hidden');
+
+      document.getElementById('quizStudentInfo').textContent =
+        `${currentQuiz.studentId} ${currentQuiz.studentName} ｜ ${currentQuiz.subjectName}`;
+
+      const container = document.getElementById('questionsContainer');
+      container.innerHTML = currentQuiz.questions.map((q, index) => {
+        const opts = ['A', 'B', 'C', 'D'].map(key => `
+          <label id="opt_${q.questionId}_${key}"
+            onclick="selectOption('${q.questionId}', '${key}')"
+            class="option-card flex items-start space-x-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer transition">
+            <input type="radio" name="q_${q.questionId}" value="${key}" class="mt-1 accent-indigo-600" />
+            <span class="text-sm leading-relaxed">
+              <strong class="mr-1.5 text-slate-700">${key}.</strong>${escapeHtml(q.options[key] || '')}
+            </span>
+          </label>
+        `).join('');
+
+        return `
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 md:p-6">
+            <div class="flex items-start space-x-3 mb-4">
+              <span class="shrink-0 bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-md mt-0.5">
+                第 ${index + 1} 題
+              </span>
+              <h3 class="text-base font-medium text-slate-800 leading-relaxed">
+                ${escapeHtml(q.questionText)}
+              </h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${opts}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      updateProgress();
+    }
+
+    function selectOption(questionId, optionKey) {
+      userAnswers[questionId] = optionKey;
+      ['A', 'B', 'C', 'D'].forEach(k => {
+        const el = document.getElementById(`opt_${questionId}_${k}`);
+        if (el) {
+          el.classList.toggle('option-selected', k === optionKey);
+          const radio = el.querySelector('input[type="radio"]');
+          if (radio) radio.checked = (k === optionKey);
+        }
+      });
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const total = currentQuiz ? currentQuiz.questions.length : 0;
+      const answered = Object.keys(userAnswers).length;
+      document.getElementById('progressText').textContent = `${answered} / ${total}`;
+    }
+
+    // 倒數計時器
+    function startTimer(limitSec) {
+      clearInterval(timerInterval);
+      remainingSeconds = limitSec;
+      examStartTimeMs = Date.now();
+      updateTimerDisplay();
+
+      timerInterval = setInterval(() => {
+        remainingSeconds--;
+        updateTimerDisplay();
+
+        if (remainingSeconds <= 0) {
+          clearInterval(timerInterval);
+          alert('作答時間已到，系統將自動為您交卷！');
+          submitExam(true);
+        }
+      }, 1000);
+    }
+
+    function updateTimerDisplay() {
+      const mins = String(Math.floor(Math.max(0, remainingSeconds) / 60)).padStart(2, '0');
+      const secs = String(Math.max(0, remainingSeconds) % 60).padStart(2, '0');
+      const timerEl = document.getElementById('timerText');
+      timerEl.textContent = `${mins}:${secs}`;
+
+      if (remainingSeconds <= 60) {
+        timerEl.className = 'font-mono font-bold text-lg text-rose-600 animate-pulse';
+      } else {
+        timerEl.className = 'font-mono font-bold text-lg text-emerald-600';
+      }
+    }
+
+    // 確認交卷
+    function confirmSubmitExam() {
+      const total = currentQuiz.questions.length;
+      const answered = Object.keys(userAnswers).length;
+      if (answered < total) {
+        const ok = confirm(`你還有 ${total - answered} 題尚未作答，確定要現在交卷嗎？`);
+        if (!ok) return;
+      }
+      submitExam(false);
+    }
+
+    // 3. 送出試卷至 GAS 改分並寫入排行榜
+    async function submitExam(isAutoSubmit = false) {
+      if (isSubmitting || !currentQuiz) return;
+      isSubmitting = true;
+      clearInterval(timerInterval);
+
+      // 補齊未作答題目為空字串，確保後端依完整題數計分
+      const completeAnswers = {};
+      currentQuiz.questions.forEach(q => {
+        completeAnswers[q.questionId] = userAnswers[q.questionId] || '';
+      });
+
+      const durationSec = Math.min(
+        currentQuiz.timeLimitSec,
+        Math.max(1, Math.round((Date.now() - examStartTimeMs) / 1000))
+      );
+
+      showLoading('正在批改試卷並寫入排行榜...');
+      try {
+        // 使用 text/plain 避開 GAS CORS OPTIONS 預檢問題
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'submitExam',
+            subjectCode: currentQuiz.subjectCode,
+            studentId: currentQuiz.studentId,
+            studentName: currentQuiz.studentName,
+            durationSec: durationSec,
+            answers: completeAnswers
+          })
+        });
+
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message);
+
+        renderResultView(json.data);
+      } catch (err) {
+        isSubmitting = false;
+        alert('交卷失敗，請檢查網路後重試：' + err.message);
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // 顯示成績與逐題解析
+    function renderResultView(result) {
+      document.getElementById('quizView').classList.add('hidden');
+      document.getElementById('resultView').classList.remove('hidden');
+
+      document.getElementById('resultSubjectTitle').textContent =
+        `${currentQuiz.subjectName} (${result.subjectCode})`;
+      document.getElementById('resultStudentMeta').textContent =
+        `學號：${result.studentId} ｜ 姓名：${result.studentName}`;
+      document.getElementById('resultScore').textContent = result.score;
+      document.getElementById('resultCorrectCount').textContent =
+        `${result.correctCount} / ${result.totalCount} 題`;
+      document.getElementById('resultDuration').textContent = `${result.durationSec} 秒`;
+      document.getElementById('resultTimestamp').textContent = result.submittedAt;
+
+      const detailsHtml = (result.details || []).map((d, idx) => {
+        const badgeClass = d.isCorrect
+          ? 'bg-emerald-100 text-emerald-700'
+          : 'bg-rose-100 text-rose-700';
+        const statusText = d.isCorrect ? '答對' : '答錯';
+
+        return `
+          <div class="p-4 rounded-xl border ${d.isCorrect ? 'border-emerald-200 bg-emerald-50/30' : 'border-rose-200 bg-rose-50/30'}">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-bold text-slate-500">第 ${idx + 1} 題</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded ${badgeClass}">${statusText}</span>
+            </div>
+            <p class="text-sm font-medium text-slate-800 mb-2">${escapeHtml(d.questionText)}</p>
+            <div class="text-xs space-x-4 text-slate-600">
+              <span>你的答案：<strong class="${d.isCorrect ? 'text-emerald-700' : 'text-rose-600'}">${d.userAnswer || '未作答'}</strong></span>
+              <span>正確答案：<strong class="text-indigo-700">${d.correctAnswer}</strong></span>
+            </div>
+            ${d.explanation ? `<p class="mt-2 text-xs text-slate-500 bg-white p-2.5 rounded-lg border border-slate-200/70">解析：${escapeHtml(d.explanation)}</p>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('resultDetailsContainer').innerHTML = detailsHtml;
+    }
+
+    function viewSubjectLeaderboard() {
+      if (currentQuiz) {
+        document.getElementById('boardSubjectSelect').value = currentQuiz.subjectCode;
+      }
+      switchTab('leaderboard');
+    }
+
+    function resetToSetup() {
+      currentQuiz = null;
+      userAnswers = {};
+      document.getElementById('headerSubjectBadge').classList.add('hidden');
+      document.getElementById('resultView').classList.add('hidden');
+      document.getElementById('quizView').classList.add('hidden');
+      document.getElementById('setupView').classList.remove('hidden');
+    }
+
+    // 4. 載入指定考科排行榜
+    async function loadLeaderboard() {
+      const subjectCode = document.getElementById('boardSubjectSelect').value;
+      const tieMode = document.getElementById('boardTieModeSelect').value;
+      if (!subjectCode) return;
+
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">排行榜資料讀取中...</td></tr>';
+
+      try {
+        const url = `${GAS_API_URL}?action=getLeaderboard&subject=${encodeURIComponent(subjectCode)}&mode=${encodeURIComponent(tieMode)}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message);
+
+        const list = json.data || [];
+        if (list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">該考科目前尚無測驗成績紀錄</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = list.map(row => {
+          let rankBadge = `<span class="font-semibold text-slate-600">${row.rank}</span>`;
+          if (row.rank === 1) rankBadge = '<span class="inline-block w-6 h-6 leading-6 rounded-full bg-amber-400 text-white font-bold text-xs">1</span>';
+          if (row.rank === 2) rankBadge = '<span class="inline-block w-6 h-6 leading-6 rounded-full bg-slate-400 text-white font-bold text-xs">2</span>';
+          if (row.rank === 3) rankBadge = '<span class="inline-block w-6 h-6 leading-6 rounded-full bg-amber-600 text-white font-bold text-xs">3</span>';
+
+          return `
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-3 px-4 text-center">${rankBadge}</td>
+              <td class="py-3 px-4 font-mono text-slate-600">${escapeHtml(row.studentId)}</td>
+              <td class="py-3 px-4 font-medium text-slate-800">${escapeHtml(row.studentName)}</td>
+              <td class="py-3 px-4 text-right font-bold text-indigo-600">${row.score} 分</td>
+              <td class="py-3 px-4 text-right text-slate-600">${row.durationSec} 秒</td>
+              <td class="py-3 px-4 text-right font-mono text-xs text-slate-500">${escapeHtml(row.submittedAt)}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-rose-500">載入失敗：${escapeHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>
