@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>小布測驗與即時排行榜系統</title>
+  <title>線上多科別測驗與即時排行榜系統</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif; }
@@ -17,7 +17,7 @@
   <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-20">
     <div class="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2">
       <div class="flex items-center space-x-2">
-        <span class="text-xl font-bold tracking-wide">小布線上測驗系統</span>
+        <span class="text-xl font-bold tracking-wide">線上測驗系統</span>
         <span id="headerSubjectBadge" class="hidden text-xs bg-indigo-500 px-2.5 py-1 rounded-full"></span>
       </div>
       <nav class="space-x-1.5 sm:space-x-2">
@@ -53,7 +53,7 @@
       <!-- 步驟 1：選擇考科與填寫基本資料 -->
       <div id="setupView" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8 max-w-xl mx-auto">
         <h2 class="text-xl font-bold text-slate-800 mb-1">測驗報到與選科</h2>
-        <p class="text-sm text-slate-500 mb-6">請輸入學號與學校姓名，並選擇要測驗的考科。按下開始後系統將立即計時。</p>
+        <p class="text-sm text-slate-500 mb-6">請輸入學號與姓名，並選擇要測驗的考科。按下開始後系統將立即計時。</p>
 
         <div class="space-y-4">
           <div>
@@ -68,14 +68,22 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">學號</label>
-              <input type="text" id="studentIdInput" placeholder="例如：999999"
+              <input type="text" id="studentIdInput" placeholder="例如：112001"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">學校姓名</label>
-              <input type="text" id="studentNameInput" placeholder="例如：中山謝小布"
+              <label class="block text-sm font-medium text-slate-700 mb-1">姓名</label>
+              <input type="text" id="studentNameInput" placeholder="例如：王小明"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">
+              裝置名稱 / 座位編號（選填）
+            </label>
+            <input type="text" id="deviceNameInput" placeholder="例如：電腦教室A-05（未填寫將自動記錄系統偵測名稱）"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
           <button onclick="startExam()"
@@ -315,6 +323,73 @@
       document.getElementById('loadingOverlay').classList.add('hidden');
     }
 
+    // 偵測使用裝置類型與自動組合裝置名稱（供寫入試算表查核）
+    function detectDeviceDetails() {
+      const ua = navigator.userAgent || '';
+      const isIPad = /iPad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isIPhone = /iPhone/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      const isWindows = /Windows/i.test(ua);
+      const isMac = !isIPad && /Macintosh|Mac OS X/i.test(ua);
+
+      let deviceType = '電腦/桌機';
+      if (isIPad) deviceType = 'iPad 平板';
+      else if (isIPhone) deviceType = 'iPhone 手機';
+      else if (isAndroid) deviceType = /Mobile/i.test(ua) ? 'Android 手機' : 'Android 平板';
+
+      let osName = '未知系統';
+      if (isWindows) osName = 'Windows';
+      else if (isIPad) osName = 'iPadOS';
+      else if (isIPhone) osName = 'iOS';
+      else if (isMac) osName = 'macOS';
+      else if (isAndroid) osName = 'Android';
+      else if (/Linux/i.test(ua)) osName = 'Linux';
+
+      let browserName = '瀏覽器';
+      if (/Edg\//i.test(ua)) browserName = 'Edge';
+      else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browserName = 'Chrome';
+      else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browserName = 'Safari';
+      else if (/Firefox\//i.test(ua)) browserName = 'Firefox';
+
+      let modelHint = '';
+      const androidModelMatch = ua.match(/Android\s[\d.]+;\s*([^;)]+)/i);
+      if (androidModelMatch && androidModelMatch[1]) {
+        modelHint = androidModelMatch[1].trim();
+      } else if (isIPad) {
+        modelHint = 'Apple iPad';
+      } else if (isIPhone) {
+        modelHint = 'Apple iPhone';
+      } else if (isMac) {
+        modelHint = 'Apple Mac';
+      } else if (isWindows) {
+        modelHint = 'Windows PC';
+      }
+
+      const screenRes = `${window.screen.width}x${window.screen.height}`;
+      const deviceInfo = `${deviceType} (${osName} / ${browserName})`;
+      const autoDeviceName = modelHint
+        ? `${modelHint} (${browserName}, ${screenRes})`
+        : `${osName} 裝置 (${browserName}, ${screenRes})`;
+
+      return { deviceInfo, autoDeviceName };
+    }
+
+    // 取得考生公開 IP（逾時或失敗時回傳「未知」，不阻斷交卷）
+    async function fetchClientIp(timeoutMs = 2500) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
+        if (!res.ok) return '未知';
+        const data = await res.json();
+        return String(data.ip || '未知').trim();
+      } catch (_) {
+        return '未知';
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     // 切換頂部頁籤（測驗 / 排行榜 / 教師專區）
     function switchTab(tab) {
       const examSec = document.getElementById('examSection');
@@ -392,6 +467,7 @@
       const subjectCode = document.getElementById('subjectSelect').value;
       const studentId = document.getElementById('studentIdInput').value.trim();
       const studentName = document.getElementById('studentNameInput').value.trim();
+      const customDeviceName = document.getElementById('deviceNameInput').value.trim();
 
       if (!subjectCode) return alert('請選擇考科');
       if (!studentId || !studentName) return alert('請輸入學號與姓名');
@@ -405,7 +481,8 @@
         currentQuiz = {
           ...json.data,
           studentId,
-          studentName
+          studentName,
+          customDeviceName
         };
         userAnswers = {};
         isSubmitting = false;
@@ -524,7 +601,7 @@
       submitExam(false);
     }
 
-    // 3. 送出試卷至 GAS 改分並寫入排行榜
+    // 3. 送出試卷至 GAS 改分並寫入試算表（附帶 IP、使用裝置、裝置名稱）
     async function submitExam(isAutoSubmit = false) {
       if (isSubmitting || !currentQuiz) return;
       isSubmitting = true;
@@ -540,8 +617,14 @@
         Math.max(1, Math.round((Date.now() - examStartTimeMs) / 1000))
       );
 
-      showLoading('正在批改試卷並寫入排行榜...');
+      showLoading('正在批改試卷並寫入成績...');
       try {
+        const clientIp = await fetchClientIp();
+        const { deviceInfo, autoDeviceName } = detectDeviceDetails();
+        const finalDeviceName = currentQuiz.customDeviceName
+          ? `${currentQuiz.customDeviceName}｜${autoDeviceName}`
+          : autoDeviceName;
+
         const res = await fetch(GAS_API_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -551,6 +634,9 @@
             studentId: currentQuiz.studentId,
             studentName: currentQuiz.studentName,
             durationSec: durationSec,
+            clientIp: clientIp,
+            deviceInfo: deviceInfo,
+            deviceName: finalDeviceName,
             answers: completeAnswers
           })
         });
@@ -622,7 +708,7 @@
       document.getElementById('setupView').classList.remove('hidden');
     }
 
-    // 4. 載入指定考科排行榜
+    // 4. 載入指定考科排行榜（僅顯示名次、學號、姓名、分數、作答耗時、交卷時間戳記）
     async function loadLeaderboard() {
       const subjectCode = document.getElementById('boardSubjectSelect').value;
       const tieMode = document.getElementById('boardTieModeSelect').value;
